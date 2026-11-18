@@ -1,0 +1,11 @@
+# ninja log v7
+53	907	8158374891192723	CMakeFiles/ember.dir/src/memory.cpp.obj	f6ee62e809d13c7c
+67	1006	8158374891334158	CMakeFiles/test_alu.dir/tests/test_alu.cpp.obj	57bf56e9af715513
+59	1158	8158374891252624	CMakeFiles/ember.dir/src/alu.cpp.obj	21aed230dab4d972
+82	1176	8158374891493851	CMakeFiles/test_alu.dir/src/alu.cpp.obj	2c498bfac14371ee
+74	1176	8158374891393548	CMakeFiles/test_alu.dir/src/memory.cpp.obj	1d568a7bac1a95f5
+63	1297	8158374891277719	CMakeFiles/ember.dir/src/cpu.cpp.obj	e6327cad7b014f61
+91	1356	8158374891561772	CMakeFiles/test_alu.dir/src/cpu.cpp.obj	b2e3f11dd94e8064
+1356	1698	8158374904222005	test_alu.exe	d4e819456ef7f3e4
+19	1763	8158374890852517	CMakeFiles/ember.dir/src/main.cpp.obj	468ebf5cbb8db4c9
+1764	2074	8158374908303759	ember.exe	bfb2d837e2bcef52
