@@ -1,4 +1,0 @@
-C:/Users/artem/Documents/Mega virus/lab-02/build/CMakeFiles/ember.dir
-C:/Users/artem/Documents/Mega virus/lab-02/build/CMakeFiles/test_alu.dir
-C:/Users/artem/Documents/Mega virus/lab-02/build/CMakeFiles/edit_cache.dir
-C:/Users/artem/Documents/Mega virus/lab-02/build/CMakeFiles/rebuild_cache.dir
