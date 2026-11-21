@@ -1,4 +1,5 @@
-// main.cpp — мінімальна оболонка `ember`: команди Lab 1 (set/get/dump) + Lab 2 (reg/regs/step/alu).
+// main.cpp — мінімальна оболонка `ember`: команди Lab 1 (set/get/dump), Lab 2 (reg/regs/step/alu)
+// і Lab 3 (set16/get16/run, регістр H).
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -49,27 +50,31 @@ static void print_help() {
     std::cout <<
         "set <addr> <byte> [byte...]   записати байти з адреси\n"
         "get <addr>                    прочитати байт\n"
+        "set16 <addr> <value>          записати 16-бітне значення, молодший байт уперед\n"
+        "get16 <addr>                  прочитати 16-бітне значення (молодший байт з addr)\n"
         "dump <addr> [len]             шістнадцятковий дамп (len за замовч. 16)\n"
         "reg <a|b> <0..255>            покласти значення в регістр\n"
-        "regs                          надрукувати PC A B Z N C\n"
+        "reg h <0..0xFFFF>             покласти адресу в адресний регістр H\n"
+        "regs                          надрукувати PC A B H Z N C\n"
         "step [n]                      виконати n інструкцій (за замовч. 1)\n"
+        "run [trace]                   виконувати до HALT або до помилки (trace — з трасуванням)\n"
         "alu <op> <a> [b]              ALU без процесора: add sub and or xor | not shl shr inc dec\n"
         "help, quit\n";
 }
 
-// step з трасуванням: «адреса: байт мнемоніка», потім нові регістри.
+// step з трасуванням: «адреса: байти мнемоніка», потім нові регістри.
+// Якщо інструкція щось надрукувала (OUT/OUTN), це йде окремим рядком між ними.
 static void do_step(CPU& cpu) {
     if (cpu.halted) {
         step(cpu);
         return;
     }
-    std::uint16_t pc = cpu.pc;
-    Byte op = mem_get(*cpu.mem, pc);
-    print_hex(pc, 4);
-    std::cout << ": ";
-    print_hex(op, 2);
-    std::cout << "  " << mnemonic(op) << '\n';
+    print_hex(cpu.pc, 4);
+    std::cout << ": " << disasm(*cpu.mem, cpu.pc) << '\n';
+    unsigned long printed_before = cpu.printed;
     step(cpu);
+    if (cpu.printed != printed_before) std::cout << '\n';
+    if (!cpu.fault.empty()) std::cout << "error: " << cpu.fault << '\n';
     dump_regs(cpu);
 }
 
@@ -95,6 +100,7 @@ int main() {
     Memory mem;
     CPU cpu;
     cpu.mem = &mem;
+    cpu.out = &std::cout;   // OUT і OUTN друкують сюди
 
     const bool interactive = EMBER_ISATTY(EMBER_STDIN_FD) != 0;
     std::string line;
@@ -137,6 +143,26 @@ int main() {
             }
             print_hex(mem_get(mem, (std::uint16_t)addr), 2);
             std::cout << '\n';
+        } else if (cmd == "set16") {
+            std::string a, v;
+            long addr = 0, value = 0;
+            if (!(words >> a) || !(words >> v) || !parse_number(a, addr) ||
+                !parse_number(v, value) || addr < 0 || value < 0 || value > 0xFFFF) {
+                std::cout << "usage: set16 <addr 0..0xFFE> <value 0..0xFFFF>\n";
+                continue;
+            }
+            if (addr >= MEM_SIZE || !set16(mem, (std::size_t)addr, (std::uint16_t)value)) {
+                std::cout << "error: set16 at " << addr << ": needs addr and addr+1 inside 0x000..0xFFF\n";
+            }
+        } else if (cmd == "get16") {
+            std::string a;
+            long addr = 0;
+            if (!(words >> a) || !parse_number(a, addr) || addr < 0 || addr >= MEM_SIZE - 1) {
+                std::cout << "usage: get16 <addr 0..0xFFE>\n";
+                continue;
+            }
+            print_hex(get16(mem, (std::size_t)addr), 4);
+            std::cout << '\n';
         } else if (cmd == "dump") {
             std::string a, l;
             long addr = 0, len = 16;
@@ -158,8 +184,12 @@ int main() {
         } else if (cmd == "reg") {
             std::string r, v;
             long value = 0;
-            if (!(words >> r) || !(words >> v) || !parse_number(v, value) || value < 0 ||
-                value > 255) {
+            if (!(words >> r) || !(words >> v) || !parse_number(v, value) || value < 0) {
+                std::cout << "usage: reg <a|b> <0..255>  |  reg h <0..0xFFFF>\n";
+            } else if (r == "h") {
+                if (value > 0xFFFF) std::cout << "usage: reg h <0..0xFFFF>\n";
+                else cpu.h = (std::uint16_t)value;
+            } else if (value > 255) {
                 std::cout << "usage: reg <a|b> <0..255>\n";
             } else if (r == "a") {
                 cpu.a = (Byte)value;
@@ -180,10 +210,29 @@ int main() {
             for (long i = 0; i < count; ++i) {
                 do_step(cpu);
                 if (cpu.halted) {
-                    if (i + 1 < count) std::cout << "halted\n";
+                    if (i + 1 < count && cpu.fault.empty()) std::cout << "halted\n";
                     break;
                 }
             }
+        } else if (cmd == "run") {
+            std::string mode;
+            bool trace = false;
+            if (words >> mode) {
+                if (mode != "trace") { std::cout << "usage: run [trace]\n"; continue; }
+                trace = true;
+            }
+            if (cpu.halted) { step(cpu); continue; }   // уже зупинений: так і скаже
+            unsigned long steps = 0;
+            unsigned long printed_before = cpu.printed;
+            if (trace) {
+                while (!cpu.halted) { do_step(cpu); ++steps; }
+            } else {
+                steps = run(cpu);
+            }
+            // Вивід програми (OUT/OUTN) не закінчується переводом рядка — закриваємо його.
+            if (!trace && cpu.printed != printed_before) std::cout << '\n';
+            if (cpu.fault.empty()) std::cout << "-- halted, " << steps << " steps\n";
+            else std::cout << "-- error: " << cpu.fault << "  (" << steps << " steps)\n";
         } else if (cmd == "alu") {
             std::string op, x, y;
             long a = 0, b = 0;
