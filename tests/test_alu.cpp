@@ -1,4 +1,3 @@
-// test_alu.cpp — самоперевірка ALU, decode() і step(). Запуск: ./build/test_alu
 #include <iostream>
 
 #include "alu.hpp"
@@ -52,7 +51,7 @@ static void test_alu_exhaustive() {
 
         for (int c = 0; c < 2; ++c) {
             CHECK(alu_inc(A, c != 0).value == (Byte)(a + 1));
-            check_flags(alu_inc(A, c != 0), c != 0);   // C не змінюється
+            check_flags(alu_inc(A, c != 0), c != 0); 
             CHECK(alu_dec(A, c != 0).value == (Byte)(a - 1));
             check_flags(alu_dec(A, c != 0), c != 0);
         }
@@ -60,13 +59,13 @@ static void test_alu_exhaustive() {
 }
 
 static void test_worked_examples() {
-    AluResult r = alu_add(200, 100);   // 300 = 256 + 44
+    AluResult r = alu_add(200, 100);
     CHECK(r.value == 44 && !r.f.z && !r.f.n && r.f.c);
-    r = alu_add(255, 1);               // загортання в нуль
+    r = alu_add(255, 1); 
     CHECK(r.value == 0 && r.f.z && !r.f.n && r.f.c);
-    r = alu_sub(5, 10);                // позика: 5 - 10 = 251
+    r = alu_sub(5, 10);
     CHECK(r.value == 251 && !r.f.z && r.f.n && r.f.c);
-    r = alu_shl(0x81);                 // біт 7 виїжджає в C
+    r = alu_shl(0x81);
     CHECK(r.value == 0x02 && r.f.c);
     r = alu_and(7, 1);
     CHECK(r.value == 1 && !r.f.z && !r.f.c);
@@ -86,7 +85,6 @@ static void load(Memory& m, const Byte* prog, int n) {
 }
 
 static void test_step() {
-    // ADD, HALT при A=200, B=100.
     Memory m;
     CPU cpu;
     cpu.mem = &m;
@@ -98,10 +96,9 @@ static void test_step() {
     CHECK(cpu.a == 44 && cpu.f.c && !cpu.f.z && cpu.pc == 1 && !cpu.halted);
     step(cpu);
     CHECK(cpu.halted && cpu.pc == 2);
-    step(cpu);   // після HALT відмовляє: PC не рухається
+    step(cpu);
     CHECK(cpu.pc == 2);
 
-    // AND, HALT при A=7, B=1 (M3 лаби).
     Memory m2;
     CPU c2;
     c2.mem = &m2;
@@ -112,7 +109,6 @@ static void test_step() {
     step(c2);
     CHECK(c2.a == 1 && !c2.f.z && !c2.f.n && !c2.f.c && c2.pc == 1);
 
-    // INC не чіпає C: ADD виставляє C=1, INC лишає його.
     Memory m3;
     CPU c3;
     c3.mem = &m3;
@@ -120,15 +116,14 @@ static void test_step() {
     load(m3, prog3, 5);
     c3.a = 200;
     c3.b = 100;
-    step(c3);   // A=44, C=1
-    step(c3);   // A=45, C лишається 1
+    step(c3);
+    step(c3);
     CHECK(c3.a == 45 && c3.f.c);
-    step(c3);   // NOP: нічого не змінюється, крім PC
+    step(c3);
     CHECK(c3.a == 45 && c3.f.c && c3.pc == 3);
     step(c3);
     CHECK(c3.a == 44 && c3.f.c && c3.pc == 4);
 
-    // Невідомий опкод поки що діє як NOP на один байт.
     Memory m4;
     CPU c4;
     c4.mem = &m4;

@@ -1,5 +1,3 @@
-// test_mem.cpp — самоперевірка Lab 3: get16/set16, група 0x2_, OUT/OUTN, H, помилки меж.
-// Запуск: ./build/test_mem
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -17,14 +15,10 @@ static int failures = 0;
         }                                                                   \
     } while (0)
 
-// Кладе байти програми в пам'ять з адреси `at`.
 static void put(Memory& m, std::uint16_t at, const std::vector<Byte>& bytes) {
     for (std::size_t i = 0; i < bytes.size(); ++i) mem_set(m, (std::uint16_t)(at + i), bytes[i]);
 }
 
-// step() після зупинки друкує в std::cout; у тестах це тільки засмічує екран.
-// Порядок полів важливий: sink має існувати ДО того, як old візьме його rdbuf().
-// (UBSan піймав це: поля ініціалізуються в порядку оголошення, а не в списку ініціалізації.)
 struct Quiet {
     std::ostringstream sink;
     std::streambuf* old;
@@ -35,11 +29,10 @@ struct Quiet {
 static void test_set16_get16() {
     Memory m;
     CHECK(set16(m, 0, 0x1234));
-    CHECK(mem_get(m, 0) == 0x34);   // молодший байт — за меншою адресою
+    CHECK(mem_get(m, 0) == 0x34);
     CHECK(mem_get(m, 1) == 0x12);
     CHECK(get16(m, 0) == 0x1234);
 
-    // Кругова перевірка: усі 65536 значень вертаються такими, як записані.
     for (unsigned v = 0; v <= 0xFFFF; ++v) {
         CHECK(set16(m, 100, (std::uint16_t)v));
         CHECK(get16(m, 100) == v);
@@ -47,22 +40,19 @@ static void test_set16_get16() {
         CHECK(mem_get(m, 101) == (Byte)(v >> 8));
     }
 
-    // Межа: остання допустима адреса — MEM_SIZE - 2 (потрібні addr і addr + 1).
     CHECK(set16(m, MEM_SIZE - 2, 0xBEEF));
     CHECK(mem_get(m, MEM_SIZE - 2) == 0xEF && mem_get(m, MEM_SIZE - 1) == 0xBE);
 
-    // addr == MEM_SIZE - 1: старший байт не вліз би. Відмова — і жодного напівзапису.
     Byte last_before = mem_get(m, MEM_SIZE - 1);
     Byte first_before = mem_get(m, 0);
     CHECK(!set16(m, MEM_SIZE - 1, 0x1234));
-    CHECK(mem_get(m, MEM_SIZE - 1) == last_before);   // молодший байт НЕ записався
-    CHECK(mem_get(m, 0) == first_before);             // і не загорнувся в байт 0
+    CHECK(mem_get(m, MEM_SIZE - 1) == last_before);
+    CHECK(mem_get(m, 0) == first_before);
     CHECK(!set16(m, MEM_SIZE, 0x1));
-    CHECK(!set16(m, (std::size_t)-1, 0x1));           // addr + 1 загорнулося б у 0
+    CHECK(!set16(m, (std::size_t)-1, 0x1));
 }
 
 static void test_isa_sizes() {
-    // Розміри з ISA.uk.md §5.
     CHECK(instr_size(OP_HALT) == 1 && instr_size(OP_NOP) == 1);
     CHECK(instr_size(OP_OUT) == 1 && instr_size(OP_OUTN) == 1);
     CHECK(instr_size(OP_ADD) == 1 && instr_size(OP_DEC) == 1);
@@ -73,7 +63,6 @@ static void test_isa_sizes() {
     CHECK(instr_size(OP_LOADH) == 3);
     CHECK(instr_size(OP_LOAD_AH) == 1 && instr_size(OP_STORE_HA) == 1);
     CHECK(instr_size(OP_INCH) == 1 && instr_size(OP_DECH) == 1);
-    // Самі опкоди — з таблиці.
     CHECK(OP_OUT == 0x02 && OP_OUTN == 0x03);
     CHECK(OP_LOADI_A == 0x20 && OP_LOADI_B == 0x21 && OP_LOAD_A == 0x22 && OP_LOAD_B == 0x23);
     CHECK(OP_STORE_A == 0x24 && OP_STORE_B == 0x25 && OP_MOV_AB == 0x26 && OP_MOV_BA == 0x27);
@@ -85,16 +74,14 @@ static void test_loadi_load_store() {
     Memory m;
     CPU cpu;
     cpu.mem = &m;
-    // LOADI A, 0x41 | LOADI B, 7 | STORE [0x0800], A | STORE [0x0801], B
-    // LOAD A, [0x0801] | LOAD B, [0x0800] | HALT
     put(m, 0, {0x20, 0x41, 0x21, 0x07, 0x24, 0x00, 0x08, 0x25, 0x01, 0x08,
                0x22, 0x01, 0x08, 0x23, 0x00, 0x08, 0x00});
     step(cpu);
-    CHECK(cpu.a == 0x41 && cpu.pc == 2);       // LOADI: розмір 2
+    CHECK(cpu.a == 0x41 && cpu.pc == 2);
     step(cpu);
     CHECK(cpu.b == 7 && cpu.pc == 4);
     step(cpu);
-    CHECK(mem_get(m, 0x800) == 0x41 && cpu.pc == 7);   // STORE: розмір 3
+    CHECK(mem_get(m, 0x800) == 0x41 && cpu.pc == 7);
     step(cpu);
     CHECK(mem_get(m, 0x801) == 7 && cpu.pc == 10);
     step(cpu);
@@ -106,7 +93,6 @@ static void test_loadi_load_store() {
 }
 
 static void test_flags_untouched() {
-    // ISA.uk.md §3: LOAD і LOADI прапорці не чіпають. Завантаження нуля не виставляє Z.
     Memory m;
     CPU cpu;
     cpu.mem = &m;
@@ -114,7 +100,7 @@ static void test_flags_untouched() {
     put(m, 0, {0x20, 0x00, 0x21, 0x00, 0x22, 0x00, 0x09, 0x26, 0x27, 0x28, 0x00, 0x09,
                0x29, 0x2A, 0x2B, 0x2C, 0x24, 0x00, 0x09});
     for (int i = 0; i < 11; ++i) step(cpu);
-    CHECK(!cpu.f.z && cpu.f.n && cpu.f.c);   // усе, як було
+    CHECK(!cpu.f.z && cpu.f.n && cpu.f.c);
     CHECK(cpu.fault.empty());
 }
 
@@ -124,10 +110,10 @@ static void test_mov() {
     cpu.mem = &m;
     put(m, 0, {OP_MOV_AB, OP_MOV_BA});
     cpu.a = 1; cpu.b = 9;
-    step(cpu);                      // A = B
+    step(cpu);
     CHECK(cpu.a == 9 && cpu.b == 9 && cpu.pc == 1);
     cpu.a = 5;
-    step(cpu);                      // B = A
+    step(cpu);
     CHECK(cpu.b == 5 && cpu.pc == 2);
 }
 
@@ -139,41 +125,38 @@ static void test_h_register() {
     cpu.out = &out;
     mem_set(m, 0x800, 65);
     mem_set(m, 0x801, 66);
-    // Сім інструкцій з M3: LOADH H,0x0800 | LOAD A,[H] | OUT | INCH | LOAD A,[H] | OUT | HALT
     put(m, 0, {0x28, 0x00, 0x08, 0x29, 0x02, 0x2B, 0x29, 0x02, 0x00});
     step(cpu);
-    CHECK(cpu.h == 0x0800 && cpu.pc == 3);   // LOADH: молодший байт 00, старший 08
+    CHECK(cpu.h == 0x0800 && cpu.pc == 3);
     step(cpu);
     CHECK(cpu.a == 65 && cpu.h == 0x0800 && cpu.pc == 4);
     step(cpu);
     CHECK(out.str() == "A");
     step(cpu);
-    CHECK(cpu.h == 0x0801);                  // H рухається на ОДИН байт
+    CHECK(cpu.h == 0x0801);
     step(cpu);
     step(cpu);
     CHECK(out.str() == "AB" && cpu.a == 66);
     step(cpu);
     CHECK(cpu.halted && cpu.h == 0x0801 && cpu.fault.empty());
 
-    // STORE [H], A і DECH.
     Memory m2;
     CPU c2;
     c2.mem = &m2;
     put(m2, 0, {0x28, 0x10, 0x09, 0x2A, 0x2C, 0x2A});
     c2.a = 0x77;
-    for (int i = 0; i < 3; ++i) step(c2);     // LOADH, STORE [H],A, DECH
+    for (int i = 0; i < 3; ++i) step(c2);
     CHECK(mem_get(m2, 0x910) == 0x77 && c2.h == 0x90F);
-    step(c2);                                 // ще один STORE [H],A — уже в сусідню комірку
+    step(c2);
     CHECK(mem_get(m2, 0x90F) == 0x77);
 
-    // H — шістнадцять бітів: INCH на 0xFFFF загортається в 0, DECH на 0 — в 0xFFFF.
     Memory m3;
     CPU c3;
     c3.mem = &m3;
     put(m3, 0, {OP_INCH, OP_DECH});
     c3.h = 0xFFFF;
     step(c3);
-    CHECK(c3.h == 0 && c3.fault.empty());     // сам INCH не помилка
+    CHECK(c3.h == 0 && c3.fault.empty());
     step(c3);
     CHECK(c3.h == 0xFFFF && c3.fault.empty());
 }
@@ -187,16 +170,15 @@ static void test_out() {
     put(m, 0, {OP_OUTN, OP_OUT, OP_OUTN});
     cpu.a = 120;
     step(cpu);
-    CHECK(out.str() == "120 ");              // число і пробіл
+    CHECK(out.str() == "120 ");
     cpu.a = 'Z';
     step(cpu);
-    CHECK(out.str() == "120 Z");             // символ
+    CHECK(out.str() == "120 Z");
     cpu.a = 0;
     step(cpu);
     CHECK(out.str() == "120 Z0 " && cpu.printed == 3);
-    CHECK(cpu.pc == 3);                      // розмір 1
+    CHECK(cpu.pc == 3);
 
-    // Без потоку виводу OUT мовчить, але не падає.
     Memory m2;
     CPU c2;
     c2.mem = &m2;
@@ -207,23 +189,22 @@ static void test_out() {
 }
 
 static void test_faults() {
-    Quiet quiet;   // step() після помилки друкує повідомлення
+    Quiet quiet;
 
-    // LOAD з адреси 0x1000 — за межами. Не загортається в 0x000, а зупиняє машину.
     Memory m;
     CPU cpu;
     cpu.mem = &m;
     mem_set(m, 0, 0x55);
-    put(m, 0, {0x22, 0x00, 0x10});            // LOAD A, [0x1000]
+    put(m, 0, {0x22, 0x00, 0x10});
     cpu.a = 0x11;
     step(cpu);
     CHECK(cpu.halted && !cpu.fault.empty());
-    CHECK(cpu.a == 0x11);                     // A не змінився
-    CHECK(cpu.pc == 0);                       // PC лишився на інструкції, що помилилась
-    unsigned long steps = run(cpu);           // зупинений: run не виконує нічого нового
+    CHECK(cpu.a == 0x11);
+    CHECK(cpu.pc == 0);
+    unsigned long steps = run(cpu);
     CHECK(steps == 0);
 
-    // STORE у 0xFFFF — за межами; пам'ять не зачеплена.
+
     Memory m2;
     CPU c2;
     c2.mem = &m2;
@@ -235,12 +216,11 @@ static void test_faults() {
     for (int i = 3; i < MEM_SIZE; ++i) untouched = untouched && mem_get(m2, (std::uint16_t)i) == 0;
     CHECK(untouched);
 
-    // LOAD A, [H] і STORE [H], A з H за межею.
     Memory m3;
     CPU c3;
     c3.mem = &m3;
     put(m3, 0, {OP_LOAD_AH});
-    c3.h = MEM_SIZE;                          // 0x1000
+    c3.h = MEM_SIZE;
     step(c3);
     CHECK(c3.halted && !c3.fault.empty() && c3.pc == 0);
 
@@ -252,7 +232,6 @@ static void test_faults() {
     step(c4);
     CHECK(c4.halted && !c4.fault.empty());
 
-    // Інструкція розміром 3 на 0xFFE: операнд виліз би за межу.
     Memory m5;
     CPU c5;
     c5.mem = &m5;
@@ -262,7 +241,6 @@ static void test_faults() {
     step(c5);
     CHECK(c5.halted && !c5.fault.empty() && c5.pc == 0xFFE && c5.h == 0);
 
-    // LOADI на 0xFFF: розмір 2, теж не влізає.
     Memory m6;
     CPU c6;
     c6.mem = &m6;
@@ -271,20 +249,18 @@ static void test_faults() {
     step(c6);
     CHECK(c6.halted && !c6.fault.empty() && c6.a == 0);
 
-    // Остання комірка: однобайтова інструкція на 0xFFF виконується, а наступний step —
-    // PC уже 0x1000 — зупиняється з помилкою, а не читає байт 0.
     Memory m7;
     CPU c7;
     c7.mem = &m7;
     mem_set(m7, 0xFFF, OP_NOP);
-    mem_set(m7, 0, OP_INC);                   // якби PC загорнувся, виконалося б INC
+    mem_set(m7, 0, OP_INC);
     c7.pc = 0xFFF;
     step(c7);
     CHECK(!c7.halted && c7.pc == 0x1000);
     step(c7);
     CHECK(c7.halted && !c7.fault.empty() && c7.a == 0);
 
-    // Звичайний HALT помилкою не вважається.
+
     Memory m8;
     CPU c8;
     c8.mem = &m8;
@@ -293,7 +269,6 @@ static void test_faults() {
 }
 
 static void test_run_and_regions() {
-    // M3: код на 0x000, дані на 0x800. Програма бере літеру з іншого регіону.
     Memory m;
     CPU cpu;
     cpu.mem = &m;
@@ -305,7 +280,6 @@ static void test_run_and_regions() {
     CHECK(steps == 3 && out.str() == "A" && cpu.halted && cpu.fault.empty());
     CHECK(cpu.pc == 5);
 
-    // Те саме, але літера через H: LOADH, LOAD A,[H], OUT, HALT.
     Memory m2;
     CPU c2;
     c2.mem = &m2;
@@ -316,12 +290,11 @@ static void test_run_and_regions() {
     steps = run(c2);
     CHECK(steps == 4 && out2.str() == "A");
 
-    // Програма, що біжить до кінця пам'яті без HALT, зупиняється помилкою, а не крутиться.
     Quiet quiet;
     Memory m3;
     CPU c3;
     c3.mem = &m3;
-    steps = run(c3);                          // уся пам'ять — нулі, але 0x00 це HALT
+    steps = run(c3);
     CHECK(steps == 1 && c3.fault.empty());
     Memory m4;
     CPU c4;
@@ -338,7 +311,6 @@ static void test_disasm() {
     CHECK(disasm(m, 3) == "22 34 12  LOAD A, [0x1234]");
     CHECK(disasm(m, 6) == "20 41  LOADI A, 0x41");
     CHECK(disasm(m, 8) == "2b  INCH");
-    // На краю пам'яті не читає за межею.
     mem_set(m, 0xFFF, OP_LOADH);
     CHECK(disasm(m, 0xFFF).find("??") != std::string::npos);
 }

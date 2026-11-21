@@ -1,5 +1,3 @@
-// cpu.cpp — форма step() дана в лабі; тут її case для груп 0x1_ і 0x2_, decode(),
-// instr_size(), disasm() і dump_regs().
 #include "cpu.hpp"
 #include "alu.hpp"
 
@@ -7,7 +5,6 @@
 #include <iostream>
 #include <sstream>
 
-// Поле, а не магічне число на кожну інструкцію: група — старший півбайт.
 Decoded decode(Byte op) {
     Decoded d;
     d.group = (Byte)((op >> 4) & 0x0F);
@@ -48,18 +45,17 @@ const char* mnemonic(Byte op) {
     }
 }
 
-// Розміри — з ISA.uk.md §5, стовпець «Розмір». Усе, чого тут немає, — 1 байт.
 int instr_size(Byte op) {
     switch (op) {
     case OP_LOADI_A:
     case OP_LOADI_B:
-        return 2;                       // опкод + imm8
+        return 2;
     case OP_LOAD_A:
     case OP_LOAD_B:
     case OP_STORE_A:
     case OP_STORE_B:
     case OP_LOADH:
-        return 3;                       // опкод + 16-бітний операнд, молодший уперед
+        return 3;
     default:
         return 1;
     }
@@ -84,7 +80,6 @@ std::string disasm(const Memory& mem, std::uint16_t addr) {
     }
     os << "  ";
 
-    // Операнди читаємо лише якщо вони вміщаються в пам'ять.
     bool fits = addr + size <= MEM_SIZE;
     unsigned imm8  = (fits && size == 2) ? mem_get(mem, (std::uint16_t)(addr + 1)) : 0;
     unsigned imm16 = (fits && size == 3) ? get16(mem, (std::size_t)addr + 1) : 0;
@@ -102,8 +97,6 @@ std::string disasm(const Memory& mem, std::uint16_t addr) {
     return os.str();
 }
 
-// Група 0x1_ (ALU). Усі інструкції тут мають розмір 1 (ISA.uk.md §5),
-// тож і PC рухається рівно на 1. CMP (0x1A) і MUL (0x1B) додадуть пізніші лаби.
 static void exec_alu(CPU& cpu, Byte op) {
     AluResult r;
     switch (op) {
@@ -115,10 +108,10 @@ static void exec_alu(CPU& cpu, Byte op) {
     case OP_NOT: r = alu_not(cpu.a);        break;
     case OP_SHL: r = alu_shl(cpu.a);        break;
     case OP_SHR: r = alu_shr(cpu.a);        break;
-    case OP_INC: r = alu_inc(cpu.a, cpu.f.c); break;   // C не чіпаємо
-    case OP_DEC: r = alu_dec(cpu.a, cpu.f.c); break;   // C не чіпаємо
+    case OP_INC: r = alu_inc(cpu.a, cpu.f.c); break;
+    case OP_DEC: r = alu_dec(cpu.a, cpu.f.c); break;
     default:
-        cpu.pc += 1;   // поки що як NOP; у Lab 4 це стане помилкою
+        cpu.pc += 1;
         return;
     }
     cpu.a = r.value;
@@ -126,15 +119,11 @@ static void exec_alu(CPU& cpu, Byte op) {
     cpu.pc += 1;
 }
 
-// Зупинка через помилку. PC не рухаємо: він лишається на інструкції, яка помилилась,
-// тож `regs` після збою показує, де саме.
 static void fail(CPU& cpu, const std::string& msg) {
     cpu.fault = msg;
     cpu.halted = true;
 }
 
-// Адреса гостя — індекс у коробці. Усе від MEM_SIZE і вище не загортаємо, а відхиляємо
-// (Lab 3, розділ 1: «відхиляйте її й не загортайте»). Це вказівник із перевіркою меж.
 static bool addr_ok(CPU& cpu, const char* what, std::uint16_t addr) {
     if (addr < MEM_SIZE) return true;
     fail(cpu, std::string(what) + " at " + hex_str(addr, 4) +
@@ -142,12 +131,8 @@ static bool addr_ok(CPU& cpu, const char* what, std::uint16_t addr) {
     return false;
 }
 
-// Група 0x2_ (пересилання даних). Прапорці НЕ чіпаємо ніде: ні LOAD, ні LOADI
-// не виставляють Z (ISA.uk.md §3, «пастка»). Повертає false, якщо сталася помилка;
-// тоді PC не рухається.
 static bool exec_move(CPU& cpu, Byte op) {
     Memory& m = *cpu.mem;
-    // Операнди лежать одразу після опкода. Те, що вони вміщаються, step() уже перевірив.
     const std::size_t at = (std::size_t)cpu.pc + 1;
 
     switch (op) {
@@ -171,18 +156,18 @@ static bool exec_move(CPU& cpu, Byte op) {
     case OP_MOV_AB: cpu.a = cpu.b; break;
     case OP_MOV_BA: cpu.b = cpu.a; break;
 
-    case OP_LOADH:   cpu.h = get16(m, at); break;      // H = imm16: адреса, а не значення
-    case OP_LOAD_AH:                                   // A = *H
+    case OP_LOADH:   cpu.h = get16(m, at); break;
+    case OP_LOAD_AH:
         if (!addr_ok(cpu, "LOAD A,[H]", cpu.h)) return false;
         cpu.a = mem_get(m, cpu.h);
         break;
-    case OP_STORE_HA:                                  // *H = A
+    case OP_STORE_HA:
         if (!addr_ok(cpu, "STORE [H],A", cpu.h)) return false;
         mem_set(m, cpu.h, cpu.a);
         break;
-    case OP_INCH: cpu.h = (std::uint16_t)(cpu.h + 1); break;   // ++p: на ОДИН байт
-    case OP_DECH: cpu.h = (std::uint16_t)(cpu.h - 1); break;   // --p
-    default: break;   // 0x2D і далі додадуть пізніші лаби: поки що NOP (див. step)
+    case OP_INCH: cpu.h = (std::uint16_t)(cpu.h + 1); break;
+    case OP_DECH: cpu.h = (std::uint16_t)(cpu.h - 1); break;
+    default: break;
     }
     return true;
 }
@@ -193,14 +178,12 @@ void step(CPU& cpu) {
         else                   std::cout << "error: " << cpu.fault << '\n';
         return;
     }
-    // PC — адреса гостя. Якщо він уже за краєм коробки, читати нічого.
     if (cpu.pc >= MEM_SIZE) {
         fail(cpu, "PC " + hex_str(cpu.pc, 4) + ": ran off the end of memory");
         return;
     }
     Byte op = mem_get(*cpu.mem, cpu.pc);
     int size = instr_size(op);
-    // Інструкція в 3 байти на 0xFFE розтяглася б за межу: операнд прочитався б із байта 0.
     if ((std::size_t)cpu.pc + (std::size_t)size > (std::size_t)MEM_SIZE) {
         fail(cpu, "PC " + hex_str(cpu.pc, 4) + ": " + mnemonic(op) +
                       " needs " + std::to_string(size) + " bytes, past the end of memory");
@@ -208,7 +191,7 @@ void step(CPU& cpu) {
     }
 
     switch (decode(op).group) {
-    case 0x0:   // керування й вивід
+    case 0x0:
         switch (op) {
         case OP_HALT:
             cpu.halted = true;
@@ -221,27 +204,24 @@ void step(CPU& cpu) {
             if (cpu.out) *cpu.out << (int)cpu.a << ' ';
             ++cpu.printed;
             break;
-        default:   // NOP і 0x04.. (їх додадуть пізніші лаби)
+        default:
             break;
         }
         cpu.pc = (std::uint16_t)(cpu.pc + size);
         break;
-    case 0x1:   // ALU: exec_alu сам рухає PC на 1
+    case 0x1:
         exec_alu(cpu, op);
         break;
-    case 0x2:   // пересилання даних
-        if (!exec_move(cpu, op)) return;               // помилка: PC лишається
-        cpu.pc = (std::uint16_t)(cpu.pc + size);       // розмір з таблиці, а не на око
+    case 0x2:
+        if (!exec_move(cpu, op)) return;
+        cpu.pc = (std::uint16_t)(cpu.pc + size);
         break;
     default:
-        cpu.pc += 1;              // поки що як NOP; у Lab 4 це стане помилкою
+        cpu.pc += 1;
         break;
     }
 }
 
-// Виконує до HALT або до помилки. Окремої «стелі» на кількість кроків не ставимо:
-// без стрибків (Lab 4) PC лише росте, тож програма скінчиться не більше ніж за MEM_SIZE
-// кроків — або HALT, або виходом за край. Коли з'являться стрибки, стеля знадобиться.
 unsigned long run(CPU& cpu) {
     unsigned long steps = 0;
     while (!cpu.halted) {
